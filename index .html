@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>تام سخنگوی اهورا</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700;900&display=swap">
+<style>
+:root{--bg:#fff4dc;--fg:#2b2140;--card:#fff;--soft:#f3e6c4;--line:#2b2140;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1b1430;--fg:#fff1d6;--card:#2a2046;--soft:#3a2d5e;--line:#fff1d6;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#1b1430;--fg:#fff1d6;--card:#2a2046;--soft:#3a2d5e;--line:#fff1d6;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:"Vazirmatn",Tahoma,"Segoe UI",sans-serif;min-height:100vh}
+#wrap{max-width:480px;margin:0 auto;padding:18px 16px 40px;text-align:center}
+h1{font-size:28px;font-weight:900;margin:6px 0 14px}
+.stage{background:var(--card);border:3px solid var(--line);border-radius:30px;box-shadow:0 6px 0 var(--line);padding:22px 12px;display:flex;align-items:center;justify-content:center;min-height:300px}
+.char{width:220px;height:220px;border-radius:50%;border:4px solid var(--line);background:var(--soft);overflow:hidden;display:grid;place-items:center;font-size:110px;transition:transform .15s}
+.char img{width:100%;height:100%;object-fit:cover;display:none}
+.char.has img{display:block}
+.char.has span{display:none}
+.char.listen{animation:ear 1s ease-in-out infinite}
+.char.talk{animation:bounce .32s ease-in-out infinite}
+@keyframes ear{0%,100%{transform:rotate(-3deg) scale(1)}50%{transform:rotate(3deg) scale(1.05)}}
+@keyframes bounce{0%,100%{transform:translateY(0) scale(1,1)}50%{transform:translateY(-14px) scale(1.06,.94)}}
+#st{min-height:34px;margin:14px 0 8px;font-weight:700;font-size:17px}
+.btn{border:3px solid var(--line);border-radius:18px;background:#2ec4b6;color:#2b2140;font:900 20px "Vazirmatn",Tahoma,sans-serif;padding:14px 18px;cursor:pointer;box-shadow:0 5px 0 var(--line);width:100%}
+.btn:active{transform:translateY(3px);box-shadow:0 2px 0 var(--line)}
+.btn.on{background:#e63946;color:#fff}
+.row{display:flex;gap:10px;align-items:center;margin-top:16px;font-weight:700}
+.row input[type=range]{flex:1}
+.pic{display:block;margin-top:14px;background:var(--soft);border-radius:14px;padding:10px;font-weight:700;cursor:pointer}
+.tip{font-size:13px;opacity:.75;margin-top:14px;line-height:1.9}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1>🧒 تام سخنگوی اهورا</h1>
+  <div class="stage"><div class="char" id="ch"><span>🧒</span><img id="im" alt=""></div></div>
+  <div id="st">دکمه رو بزن و با اهورا حرف بزن!</div>
+  <button class="btn" id="go">🎤 میکروفون روشن</button>
+  <div class="row"><span>صدای بامزه:</span><input type="range" id="rt" min="1.2" max="2.4" step="0.1" value="1.8"></div>
+  <label class="pic">📷 عکس اهورا رو بذار<input type="file" id="pf" accept="image/*" hidden></label>
+  <div class="tip">هر چی بگی، بعد از یه مکث کوتاه اهورا با صدای بامزه تکرارش می‌کنه. دوباره بزن تا خاموش بشه.</div>
+</div>
+<script>
+var ch = document.getElementById('ch'), st = document.getElementById('st'), go = document.getElementById('go'), rt = document.getElementById('rt');
+var ctx = null, stream = null, proc = null, node = null, state = 'off';
+var chunks = [], pre = [], rec = false, sil = 0, TH = 0.02;
+
+document.getElementById('pf').onchange = function(){
+  var f = this.files[0]; if (!f) return;
+  document.getElementById('im').src = URL.createObjectURL(f);
+  ch.classList.add('has');
+};
+function say(t){ st.textContent = t; }
+function mode(m){ state = m; ch.classList.toggle('listen', m === 'listen'); ch.classList.toggle('talk', m === 'play'); }
+
+function finish(){
+  var n = 0, i;
+  for (i = 0; i < chunks.length; i++) n += chunks[i].length;
+  var secs = n / ctx.sampleRate;
+  rec = false; sil = 0; pre = [];
+  if (secs < 0.35){ chunks = []; return; }
+  var buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0), o = 0;
+  for (i = 0; i < chunks.length; i++){ d.set(chunks[i], o); o += chunks[i].length; }
+  chunks = [];
+  mode('play'); say('🔊 اهورا داره تکرار می‌کنه…');
+  var s = ctx.createBufferSource();
+  s.buffer = buf; s.playbackRate.value = parseFloat(rt.value);
+  s.connect(ctx.destination);
+  s.onended = function(){ if (state === 'play'){ mode('listen'); say('👂 گوش می‌دم… حرف بزن!'); } };
+  s.start();
+}
+
+function onAudio(e){
+  if (state !== 'listen') return;
+  var d = e.inputBuffer.getChannelData(0), sum = 0, i;
+  for (i = 0; i < d.length; i++) sum += d[i] * d[i];
+  var rms = Math.sqrt(sum / d.length), copy = new Float32Array(d);
+  if (rms > TH){
+    if (!rec){ rec = true; chunks = pre.slice(); }
+    chunks.push(copy); sil = 0;
+    if (chunks.length * d.length / ctx.sampleRate > 12) finish();
+  } else if (rec){
+    chunks.push(copy); sil += d.length / ctx.sampleRate;
+    if (sil > 0.9) finish();
+  } else {
+    pre.push(copy); if (pre.length > 4) pre.shift();
+  }
+}
+
+async function start(){
+  var AC = window.AudioContext || window.webkitAudioContext;
+  try { ctx = ctx || new AC(); ctx.resume(); } catch (e) { say('این مرورگر صدا رو پشتیبانی نمی‌کنه.'); return; }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  } catch (e) {
+    say('میکروفون بسته‌ست. اجازه بده، یا این صفحه رو توی Chrome یا Safari باز کن.');
+    return;
+  }
+  node = ctx.createMediaStreamSource(stream);
+  proc = ctx.createScriptProcessor(2048, 1, 1);
+  proc.onaudioprocess = onAudio;
+  node.connect(proc); proc.connect(ctx.destination);
+  chunks = []; pre = []; rec = false; sil = 0;
+  go.textContent = '⏹️ خاموش'; go.classList.add('on');
+  mode('listen'); say('👂 گوش می‌دم… حرف بزن!');
+}
+
+function stop(){
+  mode('off');
+  try { proc.disconnect(); node.disconnect(); } catch (e) {}
+  if (stream) stream.getTracks().forEach(function(t){ t.stop(); });
+  go.textContent = '🎤 میکروفون روشن'; go.classList.remove('on');
+  say('خاموش شد. دوباره بزن تا اهورا گوش بده.');
+}
+
+go.onclick = function(){ if (state === 'off') start(); else stop(); };
+</script>
+</body>
+</html>
